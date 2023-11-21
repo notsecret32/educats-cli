@@ -26,7 +26,16 @@
     1) -m, --modules MODULES_LIST Список модулей, которые надо ребилдить (-m "admin subject test)
     2) -c, --configuration [stage|production] DEFAULT=stage
 """
+import toml
 import click
+
+
+with open('pyproject.toml', 'r') as f:
+    config = toml.load(f)
+
+
+# Constants
+RELATIVE_MODULES_PATH = config['modules']['relative_modules_directory']
 
 
 @click.group()
