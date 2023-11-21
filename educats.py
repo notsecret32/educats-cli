@@ -26,6 +26,7 @@
     1) -m, --modules MODULES_LIST Список модулей, которые надо ребилдить (-m "admin subject test)
     2) -c, --configuration [stage|production] DEFAULT=stage
 """
+import os
 import toml
 import click
 
@@ -38,6 +39,35 @@ with open('pyproject.toml', 'r') as f:
 RELATIVE_MODULES_PATH = config['modules']['relative_modules_directory']
 
 
+def get_selected_modules(modules):
+    modules_list = list(modules)
+    result = [module for modules in modules_list for module in modules.split()]
+    return result or []
+
+
+def search_modules_path(modules, depth=1) -> dict:
+    result = {}
+    unique_modules = set(modules)
+
+    for relative_module_directory in RELATIVE_MODULES_PATH:
+        absolute_module_directory = os.path.realpath(relative_module_directory)
+
+        for root, dirs, files in os.walk(absolute_module_directory, topdown=True):
+            current_level = root[len(absolute_module_directory):].count(os.sep)
+            current_work_directory = os.path.basename(os.path.normpath(root))
+
+            if (
+                (current_work_directory in unique_modules or not unique_modules)
+                and current_work_directory != 'node_modules'
+            ):
+                result[current_work_directory] = root
+
+            if current_level >= depth:
+                dirs[:] = []
+
+    return result
+
+
 @click.group()
 def cli():
     pass
@@ -46,7 +76,10 @@ def cli():
 @click.command()
 @click.option('-m', '--modules', multiple=True, help='List of modules to install')
 def install(modules):
-    pass
+    modules = get_selected_modules(modules)
+    modules_path = search_modules_path(modules)
+    for key, value in modules_path.items():
+        click.echo("{0}: {1}".format(key, value))
 
 
 @click.command()
