@@ -1,5 +1,0 @@
-[modules]
-relative_modules_directory = [
-    "test",
-    "test/modules"
-]
