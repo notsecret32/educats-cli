@@ -153,11 +153,6 @@ def build_modules(modules_path: dict, configuration):
             break
 
 
-class OrderCommands(click.Group):
-    def list_commands(self, ctx: click.Context):
-        return list(self.commands)
-
-
 @click.group()
 def cli():
     pass
