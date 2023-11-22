@@ -16,7 +16,7 @@ except FileNotFoundError:
 
 
 # Constants
-RELATIVE_MODULES_PATH = config['modules']['relative_modules_directory']
+RELATIVE_MODULES_DIRECTORIES = config['modules']['relative_modules_directories']
 EXCLUDE_DIRECTORIES = config['modules']['exclude_directories']
 
 
@@ -33,7 +33,7 @@ def search_modules_path(modules=None, depth=1) -> dict:
     result = {}
     unique_modules = set(modules)
 
-    for relative_module_directory in RELATIVE_MODULES_PATH:
+    for relative_module_directory in RELATIVE_MODULES_DIRECTORIES:
         absolute_module_directory = os.path.realpath(relative_module_directory)
 
         for root, dirs, files in os.walk(absolute_module_directory, topdown=True):
@@ -151,11 +151,6 @@ def build_modules(modules_path: dict, configuration):
                 click.echo(click.style(f'No package.json file in {module_name} module.', fg='red'))
 
             break
-
-
-class OrderCommands(click.Group):
-    def list_commands(self, ctx: click.Context):
-        return list(self.commands)
 
 
 @click.group()
