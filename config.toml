@@ -1,21 +1,15 @@
 [modules]
-relative_modules_directories = [
-    "../",
-    "../modules"
-]
-
-exclude_directories = [
-    "CATSdesigner",
-    ".git",
-    ".husky",
-    ".temp",
-    ".vscode",
-    "api",
-    "build",
-    "ChatServer",
-    "cicd",
-    "cli",
-    "common",
-    "modules",
-    "node_modules"
+relative_modules_path_list = [
+    "./test/container",
+    "./test/server",
+    "./test/modules/admin",
+    "./test/modules/complex",
+    "./test/modules/confirmation",
+    "./test/modules/course-projects",
+    "./test/modules/diplom-projects",
+    "./test/modules/editor",
+    "./test/modules/schedule",
+    "./test/modules/statistics",
+    "./test/modules/subjects",
+    "./test/modules/tests",
 ]
