@@ -7,6 +7,9 @@ class Module:
         self.absolute_path = self.get_absolute_path()
         self.name = self.get_work_directory()
 
+    def __str__(self):
+        return f'Module({self.name}, {self.absolute_path})'
+
     def get_absolute_path(self):
         return os.path.realpath(self.relative_path)
 

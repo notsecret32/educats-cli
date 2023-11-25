@@ -1,9 +1,9 @@
-from module import Module
-from modules_list import ModulesList, ModulesListActions
+from cli.modules.modules_list import ModulesList
 
 
-__all__ = [
-    "Module",
-    "ModulesList",
-    "ModulesListActions"
-]
+global_modules_list: ModulesList
+
+
+def initialize_global_modules(modules_list: ModulesList):
+    global global_modules_list
+    global_modules_list = modules_list
