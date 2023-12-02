@@ -1,217 +1,195 @@
-import os
 import sys
-import toml
+
 import click
-import shutil
-import subprocess
-
-from tqdm import tqdm
+import toml
 
 
+from cli.utils import combine_exclude_modules
+from cli.modules.modules_list import ModulesList
+from cli.commands import (
+    install_modules,
+    uninstall_modules,
+    reinstall_modules,
+    build_modules,
+    rebuild_modules,
+    show_all_modules
+)
+
+
+# Открываем файл с настройками
 try:
     with open('config.toml', 'r') as f:
         config = toml.load(f)
 except FileNotFoundError:
-    click.echo(click.style('Error: The pyproject.toml file could not be found', fg='red'))
+    click.echo(click.style(f'Error: config.toml file not found.', fg='red'))
+    sys.exit(1)
 
 
-# Constants
-RELATIVE_MODULES_DIRECTORIES = config['modules']['relative_modules_directories']
-EXCLUDE_DIRECTORIES = config['modules']['exclude_directories']
+# Константы из конфигурационного файла
+RELATIVE_MODULES_PATH_LIST = config['modules']['relative_modules_path_list']
+EXCLUDE_MODULES_FROM_INSTALL = config['modules']['exclude_modules_for_install']
+EXCLUDE_MODULES_FROM_UNINSTALL = config['modules']['exclude_modules_for_uninstall']
+EXCLUDE_MODULES_FROM_REINSTALL = config['modules']['exclude_modules_for_reinstall']
+EXCLUDE_MODULES_FROM_BUILD = config['modules']['exclude_modules_for_build']
+EXCLUDE_MODULES_FROM_REBUILD = config['modules']['exclude_modules_for_rebuild']
 
 
-def get_selected_modules(modules):
-    modules_list = list(modules)
-    result = [module for modules in modules_list for module in modules.split()]
-    return result or []
+# Глобальный список модулей
+ModulesList.set_global_path_to_modules(RELATIVE_MODULES_PATH_LIST)
+global_modules_list = ModulesList(parameter=RELATIVE_MODULES_PATH_LIST)
 
 
-def search_modules_path(modules=None, depth=1) -> dict:
-    if modules is None:
-        modules = []
+# Определение команд и их настройка
+class CommandOrder(click.Group):
+    def __init__(self, *args, **kwargs):
+        self.list_commands = None
+        self.priorities = {}
+        super(CommandOrder, self).__init__(*args, **kwargs)
 
-    result = {}
-    unique_modules = set(modules)
+    def get_help(self, ctx):
+        self.list_commands = self.list_commands_for_help
+        return super(CommandOrder, self).get_help(ctx)
 
-    for relative_module_directory in RELATIVE_MODULES_DIRECTORIES:
-        absolute_module_directory = os.path.realpath(relative_module_directory)
+    def list_commands_for_help(self, ctx):
+        """reorder the list of commands when listing the help"""
+        commands = super(CommandOrder, self).list_commands(ctx)
+        return (c[1] for c in sorted(
+            (self.priorities.get(command, 1), command)
+            for command in commands))
 
-        for root, dirs, files in os.walk(absolute_module_directory, topdown=True):
-            current_level = root[len(absolute_module_directory):].count(os.sep)
-            current_work_directory = os.path.basename(os.path.normpath(root))
+    def command(self, *args, **kwargs):
+        """Behaves the same as `click.Group.command()` except capture
+        a priority for listing command names in help.
+        """
+        priority = kwargs.pop('priority', 1)
+        priorities = self.priorities
 
-            if (
-                (current_work_directory in unique_modules or not unique_modules)
-                and current_work_directory not in EXCLUDE_DIRECTORIES
-            ):
-                result[current_work_directory] = root
+        def decorator(f):
+            cmd = super(CommandOrder, self).command(*args, **kwargs)(f)
+            priorities[cmd.name] = priority
+            return cmd
 
-            if current_level >= depth:
-                dirs[:] = []
-
-    return result
-
-
-def install_modules(modules_path: dict):
-    for module_name, module_path in modules_path.items():
-        for _, _, files in os.walk(module_path):
-            if 'package.json' in files:
-                try:
-                    click.echo(click.style(
-                        f'{module_name}: The process of installing packages has started.',
-                        fg='green'
-                    ))
-
-                    subprocess.check_call(
-                        'npm install --force --silent',
-                        shell=True,
-                        cwd=module_path,
-                    )
-
-                    click.echo(click.style(
-                        f'{module_name}: Packages have been installed successfully.',
-                        fg='green'
-                    ))
-                except subprocess.CalledProcessError as ex:
-                    click.echo(click.style(
-                        f'{module_name}: {ex}',
-                        fg='red'
-                    ))
-                    sys.exit(1)
-
-            else:
-                click.echo(click.style(f'No package.json file in {module_name} module.', fg='red'))
-            break
+        return decorator
 
 
-def uninstall_modules(modules_path: dict):
-    for module_name, module_path in modules_path.items():
-        files_to_remove = []
-        dirs_to_remove = []
-
-        click.echo(click.style(
-            f'{module_name}: The process of uninstalling packages has started.',
-            fg='green'
-        ))
-
-        for root, dirs, files in os.walk(module_path, topdown=False):
-            if 'package-lock.json' in files:
-                files_to_remove.append(os.path.join(root, 'package-lock.json'))
-
-            if 'node_modules' in dirs:
-                dirs_to_remove.append(os.path.join(root, 'node_modules'))
-
-        total_files = len(files_to_remove) + len(dirs_to_remove)
-
-        if total_files > 0:
-            with tqdm(total=total_files, desc=module_name, ncols=80) as progressbar:
-                for file in files_to_remove:
-                    os.remove(file)
-                    progressbar.update(1)
-
-                for dir in dirs_to_remove:
-                    shutil.rmtree(dir)
-                    progressbar.update(1)
-        else:
-            click.echo(click.style(
-                f'Warning: Could not find package-lock.json or node_modules in the {module_name} module.',
-                fg='yellow'
-            ))
-            break
-
-        click.echo(click.style(
-            f'{module_name}: Packages have been uninstalled successfully.',
-            fg='green'
-        ))
-
-
-def build_modules(modules_path: dict, configuration):
-    for module_name, module_path in modules_path.items():
-        for _, _, files in os.walk(module_path):
-            if 'package.json' in files:
-                try:
-                    click.echo(click.style(
-                        f'{module_name}: The process of building module has started.',
-                        fg='green'
-                    ))
-
-                    subprocess.check_call(f'npm run build -- --configuration={configuration}', shell=True, cwd=module_path)
-
-                    click.echo(click.style(
-                        f'{module_name}: The package was successfully built.',
-                        fg='green'
-                    ))
-                except subprocess.CalledProcessError as ex:
-                    click.echo(click.style(
-                        f'{module_name}: {ex}',
-                        fg='red'
-                    ))
-                    sys.exit(1)
-            else:
-                click.echo(click.style(f'No package.json file in {module_name} module.', fg='red'))
-
-            break
-
-
-@click.group()
+@click.group(cls=CommandOrder)
 def cli():
     pass
 
 
-@cli.command(
-    help='Installs the project packages specified in package.json file.'
-)
+@cli.command(priority=1,
+             help='Installs the libraries specified in the package.a json file.')
 @click.option(
     '-m',
     '--modules',
     multiple=True,
     help="Specifies the name of the modules to be installed."
 )
-def install(modules):
-    modules = get_selected_modules(modules)
-    modules_path = search_modules_path(modules)
-    install_modules(modules_path)
-
-
-@cli.command(
-    help='Deletes the project packages specified in package.json file.'
+@click.option(
+    '-e',
+    '--exclude',
+    multiple=True,
+    help="Specifies the names of modules to be excluded."
 )
+@click.option(
+    '-s',
+    '--silent',
+    is_flag=True,
+    help="Specifies whether to output npm logs to the console or not."
+)
+def install(modules, exclude, silent=False):
+    install_modules(
+        modules,
+        combine_exclude_modules(
+            EXCLUDE_MODULES_FROM_INSTALL,
+            exclude
+        ),
+        silent
+    )
+
+
+@cli.command(priority=2,
+             help='Deletes the folder node_modules and package-lock.json file (optional).')
 @click.option(
     '-m',
     '--modules',
     multiple=True,
-    help="Specifies the name of the modules to be deleted."
+    help="Specifies the name of the modules to be uninstalled."
 )
-def uninstall(modules):
-    modules = get_selected_modules(modules)
-    modules_path = search_modules_path(modules)
-    uninstall_modules(modules_path)
+@click.option(
+    '-e',
+    '--exclude',
+    multiple=True,
+    help="Specifies the names of modules to be excluded."
+)
+@click.option(
+    '-p',
+    '--package-lock',
+    is_flag=True,
+    help="Indicates whether to delete the package-lock.json file or not."
+)
+def uninstall(modules, exclude, package_lock):
+    uninstall_modules(
+        modules,
+        combine_exclude_modules(
+            EXCLUDE_MODULES_FROM_UNINSTALL,
+            exclude
+        ),
+        package_lock,
+    )
 
 
-@cli.command(
-    help='Removes packages from the module and then installs them.'
-)
+@cli.command(priority=3,
+             help='Reinstalls the modules specified in the package.json file.')
 @click.option(
     '-m',
     '--modules',
     multiple=True,
-    help='Specifies the name of modules to be reinstalled.'
+    help="Specifies the name of the modules to be reinstalled."
 )
-def reinstall(modules):
-    modules_list = get_selected_modules(modules)
-    modules_path = search_modules_path(modules_list)
-    uninstall_modules(modules_path)
-    install_modules(modules_path)
+@click.option(
+    '-e',
+    '--exclude',
+    multiple=True,
+    help="Specifies the names of modules to be excluded."
+)
+@click.option(
+    '-s',
+    '--silent',
+    is_flag=True,
+    help="Specifies whether to output npm logs to the console or not."
+)
+@click.option(
+    '-p',
+    '--package-lock',
+    is_flag=True,
+    help="Indicates whether to delete the package-lock.json file or not."
+)
+def reinstall(selected_modules, exclude_modules, silent, delete_package_lock_file):
+    reinstall_modules(
+        selected_modules,
+        combine_exclude_modules(
+            EXCLUDE_MODULES_FROM_REINSTALL,
+            exclude_modules
+        ),
+        silent,
+        delete_package_lock_file
+    )
 
 
-@cli.command(
-    help='Starts the module build.'
-)
+@cli.command(priority=4,
+             help='Builds modules with the specified configuration.')
 @click.option(
     '-m',
     '--modules',
     multiple=True,
-    help='Specifies the name of modules to be build.'
+    help="Specifies the name of the modules to be build."
+)
+@click.option(
+    '-e',
+    '--exclude',
+    multiple=True,
+    help="Specifies the names of modules to be excluded."
 )
 @click.option(
     '-c',
@@ -220,20 +198,42 @@ def reinstall(modules):
     default='stage',
     help='Specifies which build configuration to use. [DEFAULT=stage]'
 )
-def build(modules, configuration):
-    modules_list = get_selected_modules(modules)
-    modules_path = search_modules_path(modules_list)
-    build_modules(modules_path, configuration)
+def build(selected_modules, exclude_modules, configuration):
+    build_modules(
+        selected_modules,
+        combine_exclude_modules(
+            EXCLUDE_MODULES_FROM_BUILD,
+            exclude_modules
+        ),
+        configuration
+    )
 
 
-@cli.command(
-    help='First reinstall packages, and then builds them.'
-)
+@cli.command(priority=5,
+             help='Rebuilds modules with the specified configuration.')
 @click.option(
     '-m',
     '--modules',
     multiple=True,
-    help='Specifies the name of modules to be rebuild.'
+    help="Specifies the name of the modules to be rebuild."
+)
+@click.option(
+    '-e',
+    '--exclude',
+    multiple=True,
+    help="Specifies the names of modules to be excluded."
+)
+@click.option(
+    '-s',
+    '--silent',
+    is_flag=True,
+    help="Specifies whether to output npm logs to the console or not."
+)
+@click.option(
+    '-p',
+    '--package-lock',
+    is_flag=True,
+    help="Indicates whether to delete the package-lock.json file or not."
 )
 @click.option(
     '-c',
@@ -242,32 +242,24 @@ def build(modules, configuration):
     default='stage',
     help='Specifies which build configuration to use. [DEFAULT=stage]'
 )
-def rebuild(modules, configuration):
-    modules_list = get_selected_modules(modules)
-    modules_path = search_modules_path(modules_list)
-    uninstall_modules(modules_path)
-    install_modules(modules_path)
-    build_modules(modules_path, configuration)
+def rebuild(selected_modules, exclude_modules, silent, delete_package_lock_file, configuration):
+    rebuild_modules(
+        selected_modules,
+        combine_exclude_modules(
+            EXCLUDE_MODULES_FROM_REBUILD,
+            exclude_modules
+        ),
+        silent,
+        delete_package_lock_file,
+        configuration
+    )
 
 
-@cli.command(
-    name='list',
-    help='Displays a list of found modules.'
-)
+@cli.command(name='list',
+             priority=6,
+             help='Displays a list of found modules.')
 def list_modules():
-    modules_path = search_modules_path()
-
-    if not modules_path:
-        click.echo(click.style(
-            ''.join((
-                "Warning: The list of available modules is empty.",
-                "\nChange the search folders in the pyproject.toml file."
-            )),
-            fg='yellow')
-        )
-
-    for key, value in modules_path.items():
-        click.echo("{0}: {1}".format(key, value))
+    show_all_modules(global_modules_list)
 
 
 cli.add_command(install)
@@ -278,5 +270,5 @@ cli.add_command(rebuild)
 cli.add_command(list_modules)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()
