@@ -13,3 +13,17 @@ relative_modules_path_list = [
     "./test/modules/subjects",
     "./test/modules/tests",
 ]
+
+exclude_modules_for_install = []
+
+exclude_modules_for_uninstall = []
+
+exclude_modules_for_reinstall = []
+
+exclude_modules_for_build = [
+    './test/server',
+]
+
+exclude_modules_for_rebuild = [
+    './test/server',
+]

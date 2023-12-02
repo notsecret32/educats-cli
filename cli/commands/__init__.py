@@ -3,7 +3,8 @@ from cli.commands.commands import (
     uninstall_modules,
     reinstall_modules,
     build_modules,
-    rebuild_modules
+    rebuild_modules,
+    show_all_modules
 )
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "uninstall_modules",
     "reinstall_modules",
     "build_modules",
-    "rebuild_modules"
+    "rebuild_modules",
+    "show_all_modules"
 ]
